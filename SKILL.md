@@ -1,161 +1,107 @@
 ---
 name: laya-decision
-description: 自包含复刻 Laya 的 System 1 决策原理，让加载本 skill 的大模型自己充当决策引擎，零外部依赖（无需 laya 包 / torch / 联网下载权重）。用于分类、打标、路由、评分排序、是否/风险判定、优先级、LLM-as-judge、工单分流、内容审核、输入护栏、模型路由、命令风险闸门等高频结构化小决策；也支持批量打标。输出单次结构化答案 + 校准式置信度，可设阈值弃权并升级到完整推理或人工。不适用于需要生成文本、长链推理或解释的任务。
+description: >
+  自包含复刻 Laya 的 System 1 决策原理，作为「1 个决策中枢 + N 个领域专家」的专家团在
+  WorkBuddy 中运行。让加载本 skill 的大模型自己充当决策引擎，零外部依赖（无需 laya 包 /
+  torch / 联网下载权重）。用于对任意 state（代码 diff、shell 命令、工单、安全操作、测试报告等）
+  做固定题型的快决策，并输出校准式置信度；低置信或命中高危闸门时升级到 System 2 深度推理或人工。
+  触发词：决策、路由、专家团、审批闸门、风险评估、是否放行、置信度、升级人工、代码评审、命令风险、
+  安全合规、工单分诊、发布闸门、laya、system1。
+version: "2.0.0"
+author: "laya-decision team"
+updated: "2026-10-04"
+metadata:
+  mode: self-contained
+  external_deps: none
+  runtime: llm-as-engine
 ---
 
-# Laya 决策协议（大模型自驱版）
+# Laya 决策中枢 · 专家团版
 
-本 skill **复刻 Laya 的作业原理**，但**不依赖任何外部模型**：
-原版 Laya 是一个 322M 参数的 System 1 决策模型，需要联网下载权重 + 装 torch。
-这里把它的核心机制搬进协议本身——**加载本 skill 的你（大模型）就是这台决策引擎**，
-只靠 `scripts/laya_engine.py`（纯标准库、零 pip 依赖）做协议强制、归一化、闸门与路由。
+把 Laya 的 **System 1 决策原理** 复刻成一个协议：加载本 skill 的大模型就是决策引擎，
+针对一组**固定题型**产出结构化 JSON 答案（不写散文），每条答案带 0~1 的校准式置信度。
+本 skill 是专家团的**中枢**，负责路由、闸门、共识与审计；5 个领域专家各自出题与深度推理。
 
-Laya 被复刻的三件事：
+## 为什么这样设计（三条原理）
+1. **结构化决策瓶颈**：答案空间预先固定（choice / score / noul），大模型只能从已定义选项里选，
+   不会产出你没定义的标签，也不会跑偏成闲聊。
+2. **校准式置信度 + 弃权闸门**：每条答案带置信度，低于 `min_confidence` 的字段**弃权(abstain)**，
+   绝不静默采用；命中高危闸门（destructive / privileged / requires_confirmation / needs_human / breaking …）
+   一律**升级人工确认**，禁止自动执行不可逆动作。
+3. **预测与行动分离**：决策只给「判级 + 升级建议」，真正的执行（改代码、跑命令、发消息）必须由人工或
+   二次确认触发——决策引擎不碰扳机。
 
-1. **结构化决策瓶颈**：答案空间必须预先固定为三类题型（choice/score/noul），
-   你只输出一个 JSON 对象，**不生成散文**，因此永远不会产出你没定义的标签或坏 JSON。
-2. **校准式置信度 + 弃权闸门**：每条答案带一个 0~1 的置信度；低于 `min_confidence`
-   的字段**弃权（abstain）**，升级给完整推理（System 2）或人工，绝不静默采用。
-3. **预测与行动分离**：决策只喂给策略，不直接触发不可逆动作。
+## 专家团架构
+中枢按 `experts/_registry.json` 路由到最相关的专家；每个专家是一个可被 WorkBuddy 识别的独立 skill
+（`expert-<id>`），也可由中枢在当前会话内编排。
 
-> 校准说明：原版用 RLCD 训练出真·校准概率；本版用你的**自我报告置信度**作为代理。
-> 它不如 RLCD 严格，但仍是可用的门控杠杆——务必配合下面的弃权闸门与高危升级使用。
+| 专家 | skill 名 | 负责维度 | 高危闸门 |
+|------|----------|----------|----------|
+| 安全合规 | `expert-security-compliance` | 数据分级 / PII / 出网 / 审批 | requires_approval |
+| 代码评审 | `expert-code-reviewer` | 改动类型 / 破坏性 / 测试覆盖 | breaking, needs_human_review |
+| 运维风险 | `expert-ops-sre` | 破坏性 / 提权 / 爆炸半径 / 回滚 | destructive, privileged, requires_confirmation |
+| 需求分诊 | `expert-product-triage` | 意图 / 紧急度 / 归属 / 是否需人工 | needs_human |
+| 质量闸门 | `expert-quality-gate` | 通过/失败 / 严重度 / 发布阻塞 | blocks_release |
 
-## 何时用本协议
+## 四阶段工作流（每次决策都走完）
+**阶段 0 · 路由（route）** —— 读 state，调 `scripts/laya_engine.py route` 选最相关专家（top-k）。
+也可用关键词/语义由你自己判断。多域相关时取 top-1 主专家，其余作旁证。
 
-| 场景 | 用？ | 说明 |
-|---|---|---|
-| 分类/打标/路由（issue 分派、日志归类、意图识别） | ✅ | choice 主力场景 |
-| 排序评分（紧急度、严重性、复杂度、质量分） | ✅ | score 返回等级 |
-| 是否判定（是否需人工、是否含敏感、是否越权、命令是否高危） | ✅ | noul 返回 true/false |
-| 批量给大量文本打同一套结构化标签 | ✅✅ | 离线启发式或你逐个判 |
-| 输入/输出护栏、越狱与注入检测、模型路由 | ✅ | 见 schema 库 |
-| LLM-as-judge / 评测打分 | ✅ | 比自由打分更稳、可门控 |
-| 需要生成内容 / 多步推理 / 需要解释为什么 | ❌ | 交给完整推理 |
-| 答案空间无法预先枚举（开放式抽取、自由文本） | ❌ | 必须先固化标签集 |
-| 高风险不可逆动作的唯一依据 | ❌ | 见"预测与行动分离" |
+**阶段 1 · 出题（schema）** —— 加载该专家的 `schema.json`，题目与答案空间已固定。
+若 state 明显跨多域，可为每个相关专家分别出题，最后做共识。
 
-## 三种题型（答案空间必须预先固定）
+**阶段 2 · 作答（System 1）** —— 让大模型按固定题型产出答案 JSON：
+`{"<qid>": {"value": <答案>, "confidence": <0~1>}}`。
+用 `scripts/laya_engine.py prompt --schema-file <schema> --state <文本>` 生成标准提示词。
 
-```json
-{
-  "state_key": "diff",
-  "questions": {
-    "change_type": {                       // choice：从命名集合选一个
-      "type": "choice",
-      "instructions": "这段 `diff` 的改动属于哪一类？",
-      "criteria": {
-        "bugfix": "修正已有错误行为、边界条件或崩溃",
-        "feature": "新增能力、接口或配置项",
-        "refactor": "重构结构、命名或依赖，对外行为不变",
-        "other": "以上都不符合或无法判断"            // 永远留兜底项
-      }
-    },
-    "blast_radius": {                      // score：有序等级，返回整数 0..n-1
-      "type": "score",
-      "instructions": "这段 `diff` 的影响范围有多大？",
-      "criteria": ["单点", "局部", "跨模块", "系统性"]
-    },
-    "needs_human_review": {                // noul：是否，返回 true/false
-      "type": "noul",
-      "instructions": "存在需要人类逐行复核才能合并的风险吗（安全/资金/权限/不可逆）？"
-    }
-  }
-}
-```
+**阶段 3 · 校准 / 闸门 / 共识 / 审计**
+- `validate` 归一化答案、按 `min_confidence` 闸门、给出路由（升级 system2 / human / pass）。
+- 任一字段弃权或命中高危闸门 → **不要自动执行**：切到该专家 `SKILL.md` 的
+  「System 2 深度推理协议」做完整分析，再回 Laya 复核。
+- 多专家结论用 `consensus` 融合：任一专家判 `human` → 团队级 `human`；否则 `system2`；否则 `pass`。
+- 每次决策写审计 JSONL（见 `audit`）。
 
-写 criteria 的三条硬规则：
-1. **每个选项写判定标准**，不要只给标签名——名字相似的选项你会混。
-2. **必须有一个兜底项**（`other` / "以上都不符合"），否则你被迫在都不合适时硬选。
-3. **noul 问法要可被证伪**：用"是否明确提到要退款"而非"用户是否不满意"（主观感受你我难一致）。
+## 与 WorkBuddy 的两种集成方式
+- **方式 A · 自包含（默认，零额外 agent）**：当前会话的 LLM 直接当引擎，按本协议的四个阶段在对话里
+  切换专家人格（读 `experts/<id>/SKILL.md` 的 System 2 提示词即可扮演该专家）。最省资源。
+- **方式 B · 隔离并行（重负载/需隔离）**：用 WorkBuddy 的 Agent 工具 spawn `expert-<id>` 作为独立子
+  agent 并行分析，把各自的结构化结论回传中枢，调 `consensus` 汇总。适合多专家独立取证。
 
-## 工作流程（你如何"跑起来"）
-
-给定 state 文本 + 一个 schema 文件（或你现写的一个），按四步：
-
-**第 1 步 — 生成决策提示词（可选但推荐）**
-
+## 脚本速查（`${CODEBUDDY_SKILL_DIR}` 指向本 skill 根目录）
 ```bash
-python scripts/laya_engine.py prompt --schema-file assets/schemas/code-review.json \
-  --state "$(cat diff.txt)"
-```
-它会输出一段 System 1 决策提示词，告诉你输出什么格式的 JSON。照着它答即可。
+# 专家路由：state -> 最相关专家
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/laya_engine.py route --state "rm -rf / && sudo ..."
 
-**第 2 步 — 你输出结构化答案**
+# 生成 System 1 决策提示词
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/laya_engine.py prompt --schema-file ${CODEBUDDY_SKILL_DIR}/experts/ops-sre/schema.json --state "..."
 
-只输出如下 JSON（不要解释）：
+# 归一化 + 闸门 + 路由 一条大模型答案
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/laya_engine.py validate --schema-file <schema> --answer '<JSON>' --min-confidence 0.6 --json
 
-```json
-{
-  "change_type": {"value": "refactor", "confidence": 0.82},
-  "blast_radius": {"value": 1, "confidence": 0.60},
-  "needs_human_review": {"value": false, "confidence": 0.88}
-}
-```
+# 离线兜底（无大模型/无网络）：直接对 state 出启发式决策
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/laya_engine.py decide --schema-file <schema> --state "..." --min-confidence 0.6 --json
 
-`value`：choice 填标签名 / score 填整数等级 / noul 填 true·false；
-`confidence`：你对该条答案正确的校准概率（0~1），不确定就给低值。
+# 多专家共识
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/laya_engine.py consensus --results r1.json r2.json --json
 
-**第 3 步 — 归一化 + 闸门 + 路由**
+# 审计统计
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/laya_engine.py audit --json
 
-```bash
-python scripts/laya_engine.py validate \
-  --schema-file assets/schemas/code-review.json \
-  --answer '{"change_type":{"value":"refactor","confidence":0.82}, ...}' \
-  --min-confidence 0.5 --json
-```
+# 部署专家团到 WorkBuddy
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/install.py            # 软链到 ~/.codebuddy/skills
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/install.py --mode copy # 复制（独立、可移植）
 
-脚本会：把你的标签落到选项集、score 限幅、置信度夹到 [0,1]；
-低于闸值的字段标 `abstained:true` 并置空；返回 `routing` 决定升级方向。
-
-**第 4 步 — 按 routing 行动**
-
-- `routing.escalate == false`：直接采用，按结果分支。
-- `routing.escalate_to == "system2"`：有字段弃权 → 用完整推理重判或转人工。
-- `routing.escalate_to == "human"`：**命中高危闸门**（destructive/privileged/
-  requires_confirmation/needs_human/breaking 等字段为 true）→ 必须先停下确认，
-  **禁止自动执行**。
-
-## 离线 / 批量模式（零大模型、零网络也能跑）
-
-不传 `--answer` 时，`decide` 走内置**离线启发式**（关键词/词库兜底），
-用于演示、CI、或没有大模型调用时的 baseline：
-
-```bash
-python scripts/laya_engine.py decide \
-  --schema-file assets/schemas/command-risk.json \
-  --state 'rm -rf /var/log/app && chmod 777 /etc' --json
+# 辅佐功能
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/calibrate.py  --samples tests/samples.jsonl --out cal.md   # 阈值扫描
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/batch_eval.py  --samples tests/samples.jsonl --out eval.md  # 批量评估
+python3 ${CODEBUDDY_SKILL_DIR}/scripts/schema_gen.py  --desc "是否破坏性(是/否)，影响范围(低/中/高)" # 生成 schema 草稿
 ```
 
-启发式只是地板，真实生产用第 2~4 步的"你当引擎"路径。
+## 诚实边界（务必遵守）
+- 本版的置信度是**大模型自我报告**，不是 Laya 原版的 RLCD 真·校准。因此 `min_confidence` 建议设
+  **0.6~0.7**；任何高 stakes（删数据、提权、出网、退款、发布）一律走 `human` 闸门，**不要自动执行**。
+- 离线启发式仅是 baseline / CI / 批量用，不能替代大模型判断。
+- 专家 schema 与 System 2 提示词需要你按业务持续打磨；`schema_gen.py` 只出草稿。
 
-## 置信度闸门（不要盲信答案）
-
-| `confidence` | 处置 |
-|---|---|
-| ≥ 0.70 | 直接采用，按结果分支 |
-| 0.50 – 0.70 | 采用，但输出标注"低置信" |
-| < 0.50（或 `abstained:true`） | **弃权**：升级到完整推理或人工 |
-
-用 `--min-confidence 0.7` 让脚本自动把低置信字段置空并打 `abstained`。
-
-**预测与行动分离**：概率只喂策略。churn=0.95 可以自动开一条复核任务，
-但绝不能自动退款；判"命令高危"可以强制要求确认，但不能替他执行。
-
-## 已知边界
-
-- 本版的置信度是你的自我报告，不是 RLCD 真·校准；高 stakes 场景务必保留人工闸门。
-- choice 选项 ≤ 32，score 等级 ≤ 10，问题数 ≤ 32。
-- state 过长时你自己先抽关键片段再判（无滑窗机制）。
-- 跨平台：WorkBuddy / Codex / Claude Code 都只读取 `SKILL.md` + `scripts/` + `references/`，
-  无需任何额外安装。
-
-## 交付前自检
-
-任何用本协议替掉的判断，第一次用内置样例验证整条链路：
-
-```bash
-python scripts/laya_engine.py selftest
-```
-
-详细原理、引擎 API、schema 库见 `references/`。
+详细协议、引擎 API、校准与专家团协同见 `references/`（`principle.md` / `engine.md` / `calibration.md` /
+`question-library.md` / `expert-team.md`）。
