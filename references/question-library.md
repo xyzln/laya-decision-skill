@@ -1,56 +1,44 @@
-# 决策 schema 库（面向编码 / 运维 Agent）
+# 决策 schema 库与题型规范
 
-## 现成 schema
+Laya 的答案空间必须**预先固定**。一个 schema 是一个 JSON，含 `state_key`（待判断文本的键名）
+与 `questions`（问题集）。每个问题只有三种题型：
 
-放在 `assets/schemas/`，直接喂给 `laya_engine.py`（文件里已声明 `state_key` 与问题集）：
+| 题型 | 字段 | 答案形态 | 说明 |
+|------|------|----------|------|
+| `choice` | `criteria`(标签->标准描述) | 字符串标签 | 分类/路由/选型 |
+| `score` | `criteria`(列表或有序字典) | 整数 0..N-1 | 等级/严重度/紧急度 |
+| `noul` | 无 criteria | 布尔 true/false | 是否/有无/命中 |
 
-| 文件 | state 键 | 判什么 | 典型用途 |
-|---|---|---|---|
-| `code-review.json` | `diff` | 改动类型 / 影响范围 / 有无测试 / 是否需人审 / 是否破坏性 | PR 批量预筛，只把高风险挑给人看 |
-| `issue-triage.json` | `issue` | 类别 / 严重度 / 是否可复现 / 是否要追问 / 是否重复 | Issue 自动分派与打标 |
-| `command-risk.json` | `command` | 破坏性 / 影响范围 / 是否提权 / 是否需先确认 | 命令执行前的强制确认闸门 |
-| `test-failure.json` | `failure` | 失败归因 / 能否定位 / 是否值得重试 / 是否需人介入 | CI 失败自动分类，先自动重试 flaky |
-| `rag-relevance.json` | `passage` | 相关性 / 是否含答案 / 是否过时 / 质量分 | 检索后过滤，别把噪声塞进上下文 |
-| `agent-trace.json` | `trace` | 进展状态 / 继续运行风险 / 是否需接管 / 是否在烧预算 | 长任务自我监控，卡死早停 |
+每题必须有 `instructions`（题干）。`noul` 字段 id 若含高危关键词会触发人工闸门（见 calibration.md）。
 
-## 设计一套问题的六个步骤
+## 通用 schema 库（`assets/schemas/`，单引擎期沉淀，仍可用）
+- `code-review.json`：改动类型/爆炸半径/测试覆盖/是否需人工/是否破坏性
+- `issue-triage.json`：工单类别/严重度/紧急度/是否需人工
+- `command-risk.json`：破坏性/提权/需确认/影响范围/可逆
+- `test-failure.json`：失败类型/根因层/阻塞发布/可重试
+- `rag-relevance.json`：检索相关性/是否有依据/是否需补充
+- `agent-trace.json`：轨迹异常/是否越权/是否需干预
 
-1. **先问"我要拿答案做什么"**。触发动作的（自动合并、自动执行）才需要严闸门；只打标看的，阈值可松。
-2. **枚举答案集并穷尽**。每个 choice 必有兜底项，否则被迫硬选。
-3. **给每个选项写判定标准，不要同义词**。`{"bug":"错误","defect":"缺陷"}` 会分不开；
-   正例 `{"bugfix":"修正已有错误行为","feature":"新增能力"}`。
-4. **noul 问可证伪的事实**。"是否明确提到要退款"✅；"用户是否满意"❌。
-5. **一次问完所有问题**。一次结构化输出同时回答全部，不要拆多次。
-6. **文本放到正确的键**。instructions 用反引号引用了字段（`` `diff` ``），state 必须放在那个键下。
+## 专家 schema 库（`experts/<id>/schema.json`，专家团用）
+| 专家 | schema 路径 | 题型 |
+|------|-------------|------|
+| 安全合规 | `experts/security-compliance/schema.json` | data_classification(choice) / involves_pii / cross_boundary / regulatory_risk(score) / requires_approval(noul,高闸) |
+| 代码评审 | `experts/code-reviewer/schema.json` | change_type(choice) / breaking(noul,高闸) / test_coverage / severity(score) / needs_human_review(noul,高闸) |
+| 运维风险 | `experts/ops-sre/schema.json` | destructive/privileged/requires_confirmation(noul,高闸) / blast_radius(score) / reversible |
+| 需求分诊 | `experts/product-triage/schema.json` | intent(choice) / urgency(score) / category(choice) / needs_human(noul,高闸) |
+| 质量闸门 | `experts/quality-gate/schema.json` | status(choice) / severity(score) / root_area(choice) / blocks_release(noul,高闸) |
 
-## 反模式
+## 设计新 schema 的要点
+1. 一题一判：每个问题只回答一个明确的可判定事实，避免"综合性"大题。
+2. 选项互斥且穷尽：choice 的 `criteria` 加 `other` 兜底；score 等级从 0 起连续编号。
+3. 题干写明判定口径：`instructions` 要可操作，别写"是否合适"这种主观题。
+4. 高危动作显式成 noul 闸门：把 destructive/privileged/needs_human 等单独成题，便于自动拦截。
+5. 题目数 ≤ 32，选项 ≤ 32，score 等级 ≤ 10（引擎强约束）。
 
-| 反模式 | 后果 | 修法 |
-|---|---|---|
-| 把自由文本抽取当 choice 问 | 答案必落你没定义的类 | 需开放式抽取就用完整推理 |
-| 选项语义重叠 | 置信度普遍偏低 | 重写 criteria 拉开距离 |
-| 长文件整份丢进去 | 判之前没抽片段，易错 | 先抽关键片段 |
-| 一个 schema 塞 30 个问题 | 单题预算被挤压 | 拆 2~3 次，每次 5~8 题 |
-| 低置信也照样执行动作 | 把概率当事实 | `<0.5` 弃权，转 System 2 / 人工 |
-| 高 stakes 只看置信度 | 过度自信致误执行 | 一律走 `human` 闸门 |
-
-## 批量用法（量大的场景）
-
+## 用 schema_gen.py 出草稿
 ```bash
-# 离线启发式：一个文件一行，逐行跑（基线用，真实生产请让大模型逐条判）
-while IFS= read -r line; do
-  python scripts/laya_engine.py decide --schema-file assets/schemas/test-failure.json \
-    --state "$line" --min-confidence 0.6
-done < ci_failures.txt
+python3 scripts/schema_gen.py --desc "是否破坏性(是/否)，影响范围(低/中/高/致命)，是否需提权" --out my.json
+# 或
+python3 scripts/schema_gen.py --example '{"status":"fail","retriable":true,"level":2}' --out my.json
 ```
-
-几十到几百条：让大模型按 `prompt` 子命令逐条产出答案 JSON，再批量 `validate`。
-几千条以上：建议在调用方把答案聚成 JSONL 后逐行 `validate`。
-
-## 接入新场景的最小闭环
-
-1. 挑/改一个 schema；
-2. 准备 30~100 条人工样本；
-3. `python scripts/laya_engine.py selftest` 确认链路通；
-4. 让大模型走 `prompt → 产出答案 → validate`，人工核对高/低置信分布；
-5. 上线后按置信度分布定自动处理的覆盖率，低置信走人工 / System 2。
+生成的 `criteria`/`instructions` 仅为占位，**必须人工补完标准描述**后再用。
