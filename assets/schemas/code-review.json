@@ -1,0 +1,40 @@
+{
+  "state_key": "diff",
+  "questions": {
+    "change_type": {
+      "type": "choice",
+      "instructions": "这段 `diff` 的改动属于哪一类？",
+      "criteria": {
+        "bugfix": "修正已有的错误行为、边界条件或崩溃，不改变预期功能",
+        "feature": "新增能力、接口或配置项",
+        "refactor": "重构结构、命名或依赖，对外行为不变",
+        "test": "只改测试、fixture 或测试工具",
+        "docs": "只改文档、注释或 changelog",
+        "chore": "构建、依赖、格式化、CI 配置等工程性改动",
+        "other": "以上都不符合或无法判断"
+      }
+    },
+    "blast_radius": {
+      "type": "score",
+      "instructions": "这段 `diff` 的影响范围有多大？",
+      "criteria": [
+        "单点：一个文件或一个函数内部",
+        "局部：同一模块内多个文件",
+        "跨模块：触及公共接口或共享数据结构",
+        "系统性：涉及数据迁移、权限、并发或外部契约"
+      ]
+    },
+    "test_coverage": {
+      "type": "noul",
+      "instructions": "`diff` 中是否包含或修改了覆盖该改动行为的测试？"
+    },
+    "needs_human_review": {
+      "type": "noul",
+      "instructions": "这段 `diff` 存在需要人类逐行复核才能合并的风险吗，例如安全、资金、权限或不可逆操作？"
+    },
+    "breaking_change": {
+      "type": "noul",
+      "instructions": "这段 `diff` 会破坏已有的公开行为、接口签名或数据格式吗？"
+    }
+  }
+}
