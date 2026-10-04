@@ -1,0 +1,40 @@
+{
+  "state_key": "diff",
+  "domain": "code-reviewer",
+  "title": "代码评审专家决策题型",
+  "questions": {
+    "change_type": {
+      "type": "choice",
+      "instructions": "本次改动属于哪一类？",
+      "criteria": {
+        "bugfix": "修正错误行为",
+        "feature": "新增能力/接口",
+        "refactor": "重构结构但不改外部行为",
+        "chore": "依赖/配置/格式等维护性改动",
+        "other": "以上都不符合"
+      }
+    },
+    "breaking": {
+      "type": "noul",
+      "instructions": "是否破坏已有公开行为、API 签名或数据格式？命中即视为高危闸门。"
+    },
+    "test_coverage": {
+      "type": "noul",
+      "instructions": "本次改动是否有对应的测试覆盖？"
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "若引入缺陷，潜在严重度？",
+      "criteria": [
+        "无影响/纯样式",
+        "局部：单模块功能异常",
+        "模块间：跨服务/数据不一致",
+        "致命：安全漏洞/数据丢失/全线故障"
+      ]
+    },
+    "needs_human_review": {
+      "type": "noul",
+      "instructions": "是否需要人工评审(如核心模块/安全相关)？命中即视为高危闸门。"
+    }
+  }
+}
