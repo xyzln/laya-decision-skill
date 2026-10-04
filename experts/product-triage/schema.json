@@ -1,0 +1,42 @@
+{
+  "state_key": "request",
+  "domain": "product-triage",
+  "title": "需求与工单分诊专家决策题型",
+  "questions": {
+    "intent": {
+      "type": "choice",
+      "instructions": "用户/业务方诉求属于哪类意图？",
+      "criteria": {
+        "bug": "报告缺陷或异常",
+        "feature": "提出新功能/能力需求",
+        "question": "咨询或澄清",
+        "complaint": "投诉/不满(含退款/监管威胁)",
+        "other": "以上都不符合"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "处理紧急度？",
+      "criteria": [
+        "低：可排期",
+        "中：本周内需响应",
+        "高：影响业务/客户，需当日处理"
+      ]
+    },
+    "category": {
+      "type": "choice",
+      "instructions": "归属哪个专业域？",
+      "criteria": {
+        "frontend": "前端/界面/交互",
+        "backend": "后端/服务/接口",
+        "data": "数据/算法/报表",
+        "infra": "基础设施/部署/运维",
+        "other": "其他/跨域"
+      }
+    },
+    "needs_human": {
+      "type": "noul",
+      "instructions": "是否需要人工介入(如涉及金钱/合规/客户沟通)？命中即视为高危闸门。"
+    }
+  }
+}
