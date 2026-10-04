@@ -1,0 +1,33 @@
+{
+  "state_key": "command",
+  "domain": "ops-sre",
+  "title": "运维/SRE 风险专家决策题型",
+  "questions": {
+    "destructive": {
+      "type": "noul",
+      "instructions": "命令是否会删除/覆盖/不可逆修改数据或状态？命中即视为高危闸门。"
+    },
+    "privileged": {
+      "type": "noul",
+      "instructions": "是否需要提权(sudo/root/管理员)或敏感权限？命中即视为高危闸门。"
+    },
+    "requires_confirmation": {
+      "type": "noul",
+      "instructions": "执行前是否需要显式二次确认？命中即视为高危闸门。"
+    },
+    "blast_radius": {
+      "type": "score",
+      "instructions": "故障爆炸半径？",
+      "criteria": [
+        "仅本地/单机",
+        "单服务/单集群",
+        "多服务/跨可用区",
+        "生产全线/客户可见"
+      ]
+    },
+    "reversible": {
+      "type": "noul",
+      "instructions": "操作是否可在出错后快速回滚？"
+    }
+  }
+}
