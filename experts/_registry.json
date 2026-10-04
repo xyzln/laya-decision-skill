@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "default_min_confidence": 0.6,
+  "experts": {
+    "security-compliance": {
+      "skill_name": "expert-security-compliance",
+      "dir": "experts/security-compliance",
+      "schema": "experts/security-compliance/schema.json",
+      "title": "安全合规专家",
+      "weight": 1.2,
+      "triggers": ["安全", "合规", "pii", "隐私", "密钥", "凭据", "出网", "跨域", "审批", "监管", "数据分级", "泄露", "secret", "credential", "compliance", "privacy"]
+    },
+    "code-reviewer": {
+      "skill_name": "expert-code-reviewer",
+      "dir": "experts/code-reviewer",
+      "schema": "experts/code-reviewer/schema.json",
+      "title": "代码评审专家",
+      "weight": 1.0,
+      "triggers": ["代码评审", "review", "diff", "合并", "改动", "破坏性", "测试覆盖", "重构", "pr", "merge", "breaking", "refactor"]
+    },
+    "ops-sre": {
+      "skill_name": "expert-ops-sre",
+      "dir": "experts/ops-sre",
+      "schema": "experts/ops-sre/schema.json",
+      "title": "运维/SRE 风险专家",
+      "weight": 1.3,
+      "triggers": ["运维", "命令", "重启", "部署", "提权", "爆炸半径", "回滚", "生产", "rm", "drop", "truncate", "kill", "sudo", "deploy", "ops", "sre"]
+    },
+    "product-triage": {
+      "skill_name": "expert-product-triage",
+      "dir": "experts/product-triage",
+      "schema": "experts/product-triage/schema.json",
+      "title": "需求与工单分诊专家",
+      "weight": 1.0,
+      "triggers": ["工单", "需求", "客诉", "投诉", "退款", "分诊", "意图", "紧急度", "诉求", "ticket", "bug", "feature", "complaint"]
+    },
+    "quality-gate": {
+      "skill_name": "expert-quality-gate",
+      "dir": "experts/quality-gate",
+      "schema": "experts/quality-gate/schema.json",
+      "title": "测试与数据质量闸门专家",
+      "weight": 1.1,
+      "triggers": ["测试", "质量门禁", "发布闸门", "测试失败", "数据校验", "回归", "覆盖率", "阻塞发布", "ci", "flaky", "release", "quality"]
+    }
+  }
+}
