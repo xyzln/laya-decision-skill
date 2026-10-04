@@ -1,0 +1,40 @@
+{
+  "state_key": "issue",
+  "questions": {
+    "category": {
+      "type": "choice",
+      "instructions": "这条 `issue` 属于哪一类？",
+      "criteria": {
+        "bug": "报告功能异常、崩溃、错误结果或回归",
+        "feature_request": "请求新能力或增强",
+        "question": "询问用法、配置或行为是否符合预期",
+        "docs": "文档缺失、错误或不清",
+        "security": "涉及漏洞、越权、注入或数据泄露",
+        "performance": "性能退化、内存或耗时问题",
+        "other": "以上都不符合"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "这条 `issue` 的严重程度如何？",
+      "criteria": [
+        "轻微：体验问题或措辞问题",
+        "一般：有 workaround 的功能问题",
+        "严重：核心功能不可用或数据有误",
+        "致命：崩溃、数据丢失或安全漏洞"
+      ]
+    },
+    "reproducible": {
+      "type": "noul",
+      "instructions": "`issue` 中是否给出了可复现的步骤、版本或错误信息？"
+    },
+    "needs_reporter_info": {
+      "type": "noul",
+      "instructions": "是否需要向报告者追问更多信息才能开始处理？"
+    },
+    "duplicate_hint": {
+      "type": "noul",
+      "instructions": "`issue` 是否明确提到这是已知问题、重复问题或已在别处讨论过？"
+    }
+  }
+}
