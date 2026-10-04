@@ -1,0 +1,29 @@
+{
+  "state_key": "failure",
+  "questions": {
+    "cause": {
+      "type": "choice",
+      "instructions": "这段 `failure` 输出最可能的失败原因是什么？",
+      "criteria": {
+        "product_bug": "被测代码的行为确实错误，断言失败指向真实缺陷",
+        "flaky_test": "超时、顺序依赖、随机性、时间或并发导致的偶发失败",
+        "environment": "缺少依赖、版本不符、路径错误、权限或网络等环境问题",
+        "broken_test": "测试自身写错：断言、fixture 或 mock 有误",
+        "build_error": "编译、类型检查或打包阶段就失败，测试没有真正跑起来",
+        "other": "以上都不符合或信息不足"
+      }
+    },
+    "confidence_signal": {
+      "type": "noul",
+      "instructions": "`failure` 输出中是否包含明确的错误位置、堆栈或断言差异，足以定位到具体代码？"
+    },
+    "retry_worth_it": {
+      "type": "noul",
+      "instructions": "直接重试这条失败的用例有可能通过吗，也就是它看起来是偶发性的？"
+    },
+    "needs_human": {
+      "type": "noul",
+      "instructions": "这个失败需要人类介入判断吗，例如需求歧义或需要业务决策？"
+    }
+  }
+}
