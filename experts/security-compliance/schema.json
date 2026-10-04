@@ -1,0 +1,39 @@
+{
+  "state_key": "action",
+  "domain": "security-compliance",
+  "title": "安全合规专家决策题型",
+  "questions": {
+    "data_classification": {
+      "type": "choice",
+      "instructions": "该操作涉及的数据属于哪个分级？",
+      "criteria": {
+        "public": "公开信息，泄露无影响",
+        "internal": "内部信息，仅限于组织内流转",
+        "confidential": "机密：客户/财务/业务敏感数据",
+        "secret": "绝密：核心代码/密钥/基础设施凭据"
+      }
+    },
+    "involves_pii": {
+      "type": "noul",
+      "instructions": "操作是否涉及个人信息/个人可识别数据(PII)？"
+    },
+    "cross_boundary": {
+      "type": "noul",
+      "instructions": "是否跨安全域、出网、或发送到外部第三方？"
+    },
+    "regulatory_risk": {
+      "type": "score",
+      "instructions": "合规/监管风险等级？",
+      "criteria": [
+        "无合规风险",
+        "轻微：内部流程不齐备",
+        "中等：触及数据/行业监管(如个人信息保护法)",
+        "严重：违规将导致处罚/重大声誉损失"
+      ]
+    },
+    "requires_approval": {
+      "type": "noul",
+      "instructions": "是否需要安全/合规负责人事前审批？命中即视为高危闸门。"
+    }
+  }
+}
