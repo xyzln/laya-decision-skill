@@ -1,0 +1,27 @@
+{
+  "state_key": "passage",
+  "questions": {
+    "relevant": {
+      "type": "noul",
+      "instructions": "这段 `passage` 是否包含回答用户问题所需的信息？"
+    },
+    "contains_answer": {
+      "type": "noul",
+      "instructions": "`passage` 是否直接陈述了答案，而不只是提到相关主题？"
+    },
+    "stale_risk": {
+      "type": "noul",
+      "instructions": "`passage` 看起来是过时的、版本不符的或被废弃的内容吗？"
+    },
+    "quality": {
+      "type": "score",
+      "instructions": "作为引用来源，`passage` 的质量如何？",
+      "criteria": [
+        "无用：无关、重复或噪声",
+        "弱相关：提到主题但无实质信息",
+        "可用：包含部分有用信息",
+        "强相关：直接、完整、可据以作答"
+      ]
+    }
+  }
+}
