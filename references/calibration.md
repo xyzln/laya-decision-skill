@@ -1,54 +1,58 @@
 # 置信度、闸门与升级策略
 
 ## 置信度从哪来
+本版让**加载 skill 的大模型自我报告**每条答案的 `confidence`（0~1）。这不等同于 Laya 原版的
+RLCD 真·校准，模型可能过于自信。因此闸门要设得保守。
 
-本 skill 用**大模型的自我报告置信度**作为 `confidence` 字段（0~1）。它不是 Laya 原版
-RLCD 训练出的真·校准概率，而是代理值——详见 `principle.md`。门控一律用这一个字段，
-不要用其他语义不同的量做跨题型比较。
+## 闸门 min_confidence
+- 每条答案低于 `min_confidence` 的字段被标记为 `abstained`（choice/score 的答案清零，noul 保留值但标记）。
+- 缺字段、值越界、无法解析布尔 → 直接弃权。
+- **建议值 0.6~0.7**。高 stakes 场景即便高置信也走高危闸门，不要只看阈值。
 
-## 门控表
+## 高危闸门（命中即"human"优先）
+当某个 `noul` 字段值为 `True` 且字段 id 含以下关键词，判定为高危闸门，路由到 **人工确认**，
+禁止自动执行：
+```
+destructive, privileged, requires_confirmation, needs_human,
+needs_review, breaking, is_sensitive, unsafe, critical
+```
+各专家的默认高危闸门：
+- 安全合规：`requires_approval`
+- 代码评审：`breaking`, `needs_human_review`
+- 运维风险：`destructive`, `privileged`, `requires_confirmation`
+- 需求分诊：`needs_human`
+- 质量闸门：`blocks_release`
 
-| `confidence` | 处置 |
-|---|---|
-| ≥ 0.70 | 直接采用，按结果分支 |
-| 0.50 – 0.70 | 采用，但输出标注"低置信" |
-| < 0.50（或 `abstained:true`） | **弃权**：升级到完整推理（System 2）或人工，不要静默采用 |
+## 升级路由优先级
+1. 命中高危闸门 → `human`（最保守，先停下等人工）。
+2. 有弃权但无高危 → `system2`（交给该专家做完整深度推理，再回 Laya 复核）。
+3. 全达标 → `pass`（可进入执行，不可逆动作仍需二次确认）。
 
-脚本里用 `--min-confidence 0.7` 自动把低于闸值的字段置空并打 `abstained:true`。
-**生产建议设 0.6~0.7**：因为大模型普遍过度自信，0.5 太松。
+## 多专家共识（consensus）
+- 任一专家 `human` → 团队级 `human`。
+- 否则任一专家 `system2` → 团队级 `system2`。
+- 否则 → `pass`。
 
-## 两类升级（`routing.escalate_to`）
-
-1. **`system2`（低置信弃权）**：有字段 `confidence < min_confidence` → 触发完整推理重判，
-   或转人工。脚本会把 `abstained` 字段的 `value` 置空，避免被误用。
-2. **`human`（高危闸门）**：以下字段被你判为 `true` 时强制升级人工/用户确认——
-   `destructive` `privileged` `requires_confirmation` `needs_human` `needs_review`
-   `breaking` `is_sensitive` `unsafe` `critical` 等（含这些关键词的字段名）。
-   这是"预测与行动分离"的硬保障：**宁可卡住，不可误执行**。
-
-## 预测与行动分离（铁律）
-
-概率只喂策略，策略由你定。
-
-- ✅ churn_risk = 0.95 → 自动开一条人工复核任务
-- ❌ churn_risk = 0.95 → 自动退款
-- ✅ "命令 destructive=true" → 强制要求用户确认后才执行
-- ❌ "命令安全=false" → 直接执行
-
-不可逆、涉钱、涉权限的动作，一律不把决策当唯一依据。
-
-## 校准会失真的地方
-
-1. **标签体系换了没重验**：新标签先用 `selftest` + 真实数据人工抽查一批。
-2. **选项语义重叠**：两个 criteria 写得像同义词，你会分裂概率、整体偏低——标签设计问题。
-3. **state 过长被你自己截断**：判之前先抽关键片段，别把整份日志丢进去。
-4. **分布漂移**：业务话术变了，置信度尺度会慢慢失真，定期重测。
-
-## 接入前必做
+## 校准扫描（calibrate.py）
+用带标签样本集扫描 `min_confidence` 网格，统计每个阈值的采用率/采用准确率/弃权率/升级率，
+给出在可接受弃权率内最大化准确率的推荐阈值。
 
 ```bash
-python scripts/laya_engine.py selftest
+python3 scripts/calibrate.py --samples tests/samples.jsonl --out cal.md
+```
+样本格式（每行 JSON）：
+```json
+{"schema_file":"experts/ops-sre/schema.json","state":"rm -rf /","answer":{...},"expected":{...}}
+```
+- 有 `answer`：评估大模型真实表现。
+- 无 `answer`：走离线启发式，仅作回归基线。
+
+## 批量评估（batch_eval.py）
+对样本集逐条 `decide`，输出各专家/各题型的准确率、弃权率、升级率与结论分布，可写审计。
+```bash
+python3 scripts/batch_eval.py --samples tests/samples.jsonl --out eval.md --audit-dir ~/.cache/laya-decision
 ```
 
-确认链路通；再用你自己的 30~100 条样本，让大模型走一遍第 2~4 步，
-人工核对高/低置信样本的分布是否合理。
+## 审计（audit）
+每次 `decide` / `validate` 带 `--audit-dir` 会把结果追加到 `audit.jsonl`；
+`audit` 子命令输出升级率、各专家命中统计，便于回溯与持续改进。
