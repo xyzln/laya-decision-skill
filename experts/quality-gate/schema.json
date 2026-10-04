@@ -1,0 +1,42 @@
+{
+  "state_key": "report",
+  "domain": "quality-gate",
+  "title": "测试与数据质量闸门专家决策题型",
+  "questions": {
+    "status": {
+      "type": "choice",
+      "instructions": "本次质量信号的整体状态？",
+      "criteria": {
+        "pass": "全部通过",
+        "flaky": "偶发失败，不稳定",
+        "fail": "明确失败",
+        "blocked": "被阻塞，无法得出结论"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "若失败，对发布的质量风险？",
+      "criteria": [
+        "无：忽略级",
+        "低：非关键路径",
+        "中：关键功能降级",
+        "高：核心链路/数据正确性受损"
+      ]
+    },
+    "root_area": {
+      "type": "choice",
+      "instructions": "问题最可能在哪个层次？",
+      "criteria": {
+        "unit": "单元测试层",
+        "integration": "集成/接口层",
+        "e2e": "端到端/UI 层",
+        "perf": "性能/资源层",
+        "other": "其他/未知"
+      }
+    },
+    "blocks_release": {
+      "type": "noul",
+      "instructions": "是否必须阻塞发布/上线？命中即视为高危闸门。"
+    }
+  }
+}
